@@ -1,0 +1,17 @@
+{
+  "root": "~/.claude",
+  "lexicons": ["lexicon/lexicon.en.md", "lexicon/lexicon.ja.md"],
+  "transcripts": "~/.claude/projects",
+  "scan": [
+    {
+      "rules": ["M1"],
+      "include": ["rules/**/*.md", "skills/**/*.md", "workflows/**/*.md", "templates/**/*.md"],
+      "exclude": ["ledgers/**"]
+    },
+    {
+      "rules": ["M5"],
+      "include": ["**/HANDOFF.md"],
+      "exclude": ["ledgers/**"]
+    }
+  ]
+}
