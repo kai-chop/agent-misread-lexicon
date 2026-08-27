@@ -100,8 +100,11 @@ M1は指示文書に効かせます（誤読が作業の宛先を狂わせる場
 `roots=<存在>/<宣言>` を出すので、実際に何を走査したかが見えます:
 
 ```
-[misread-lint] alive: rules=6 roots=2/4 targets=13
+[misread-lint] alive: rules=4 roots=2/4 targets=138
 ```
+
+（宣言4拠点のうち2つが実在する機での実測値。数字は環境で変わります——`rules` は台帳の行数、
+`targets` はglobが実際に一致したファイル数です。）
 
 | 環境 | 拠点 | 指示docの置き場 |
 |---|---|---|

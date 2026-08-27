@@ -108,8 +108,11 @@ doesn't exist on your machine is skipped silently**, because nobody has all of t
 once. The alive line reports `roots=<existing>/<declared>` so you can see what was actually scanned:
 
 ```
-[misread-lint] alive: rules=6 roots=2/4 targets=13
+[misread-lint] alive: rules=4 roots=2/4 targets=138
 ```
+
+(Measured on a machine that had 2 of the 4 declared roots installed. Your numbers will differ —
+`rules` counts the rows in your lexicons, `targets` the files your globs actually matched.)
 
 | Environment | Home | Instruction docs |
 |---|---|---|
