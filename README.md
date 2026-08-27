@@ -134,6 +134,51 @@ blocks. Other vendors store conversation history differently, and the miner has 
 any of them. Treat it as Claude-Code-only until someone verifies otherwise; this repo does not claim
 broader support.
 
+## Making it actually fire
+
+Everything above gives you a tool you have to remember to run. That is not a mechanism — it is a
+tool plus an intention, and the intention is the part that fails. Two more steps close the loop.
+
+**1. Install the skill so a misread routes to the registry.** Copy the skill for your language into
+your agent's skills directory, so that when someone says *"you misread that"* the agent is pointed at
+the lexicon instead of just apologising:
+
+```bash
+mkdir -p ~/.claude/skills/misread-lexicon
+cp skill/en/SKILL.md ~/.claude/skills/misread-lexicon/   # or skill/ja/SKILL.md
+```
+
+Edit the copied file's paths to match where you put this repo and your config.
+
+**2. Wire the sweep to session start so nobody has to remember it.** In Claude Code, add one hook to
+`~/.claude/settings.json` under `hooks.SessionStart` (merge with any hooks already there — do not
+replace the array):
+
+```json
+{
+  "type": "command",
+  "command": "python /path/to/agent-misread-lexicon/tools/check_misread_words.py --config ~/.claude/misread-lexicon.json || true",
+  "timeout": 30
+}
+```
+
+`|| true` matters: the linter exits 1 when it finds something, and an unguarded non-zero exit is
+treated as a hook failure. The sweep is ~0.4s over ~60 files, and its first line is ASCII, so it
+survives any console encoding.
+
+**Then prove it fires — do not assume.** Installing a hook and observing its output are different
+events, and only the second one is evidence:
+
+```bash
+# plant a deliberate violation inside your configured M1 scope
+echo 'probe: UE bare token' > ~/.claude/templates/probe.md
+# start any new session, then confirm the finding line appeared at session start
+rm ~/.claude/templates/probe.md
+```
+
+If you skip this, you get the failure this repo is about: a mechanism that is installed, green, and
+never delivering.
+
 ## Use
 
 ```bash
@@ -153,9 +198,10 @@ The linter parses its rules out of the lexicon table at runtime. Adding a word i
 | M1 | UE | UE (Unreal Engine) — expand at first use in the file | example |
 ```
 
-No code change, no redeploy. **The intended workflow is that you add a row the moment a misread
-actually happens to you** — the registry is a record of your own accidents, not a dictionary someone
-else guessed at. It ships nearly empty on purpose.
+No code change, no redeploy — and once the sweep is wired to session start (above), no re-run either.
+**The intended workflow is that you add a row the moment a misread actually happens to you** — the
+registry is a record of your own accidents, not a dictionary someone else guessed at. It ships nearly
+empty on purpose.
 
 The table is located by a marker comment, not by its header text, so your lexicon can be in any
 language. Columns are positional: type, misread form, clearer form, source.
