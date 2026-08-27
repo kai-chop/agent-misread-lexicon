@@ -78,7 +78,7 @@ python tools/check_misread_words.py --self-test        # 自機で動くこと�
 
 ```json
 {
-  "root": "~/.claude",
+  "roots": ["~/.claude", "~/.codex", "~/.gemini", "~/.config/github-copilot"],
   "lexicons": ["lexicon/lexicon.en.md", "lexicon/lexicon.ja.md"],
   "transcripts": "~/.claude/projects",
   "scan": [
@@ -92,6 +92,33 @@ python tools/check_misread_words.py --self-test        # 自機で動くこと�
 M1は指示文書に効かせます（誤読が作業の宛先を狂わせる場所だから）。M5は**自分の規約が既に絶対日付を要求して
 いる場所**にだけ効かせます。全域に向けると、相対日付で何も問題ない散文に鳴り続けます——後述の「効くのは語でなく
 スコープ」を参照。
+
+### エージェントのdocはどこに住むか
+
+1つの設定で複数のエージェントの拠点を同時に指せます——`roots`はリストを受け取ります。**存在しない拠点は
+黙ってスキップされます**。全部インストールしている人はいないからです。aliveの行が
+`roots=<存在>/<宣言>` を出すので、実際に何を走査したかが見えます:
+
+```
+[misread-lint] alive: rules=6 roots=2/4 targets=13
+```
+
+| 環境 | 拠点 | 指示docの置き場 |
+|---|---|---|
+| Claude Code | `~/.claude` | `CLAUDE.md`、`rules/`、`skills/`、`workflows/` |
+| OpenAI Codex | `~/.codex` | `AGENTS.md`、`skills/` |
+| Gemini CLI | `~/.gemini` | `GEMINI.md` |
+| GitHub Copilot | リポジトリ内 | `.github/copilot-instructions.md` |
+| Cursor | リポジトリ内 | `.cursor/rules/**`、`.cursorrules` |
+| 共通 | リポジトリ内 | `AGENTS.md`、`HANDOFF.md` |
+
+プロジェクト単位のdocはホームディレクトリでなく、作業しているリポジトリの中に住みます——そちらのパスも
+`roots` へ足してください。例: `"roots": ["~/.claude", "."]`。
+
+**正直に書く限界**: `mine_misreads.py` が検証済みなのはClaude CodeのJSONLトランスクリプト形式だけです——
+`type: "user"`/`"assistant"` のレコードと、Anthropic形式の `message.content` ブロック。他ベンダーは会話
+履歴を別の形で保存しており、この採掘器はそのどれに対しても検証されていません。誰かが確かめるまでは
+Claude Code専用として扱ってください。このリポジトリはそれ以上の対応を謳いません。
 
 ## 使う
 

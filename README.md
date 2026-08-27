@@ -86,7 +86,7 @@ Config (`misread-lexicon.json`) — every path is yours to set; nothing is hardc
 
 ```json
 {
-  "root": "~/.claude",
+  "roots": ["~/.claude", "~/.codex", "~/.gemini", "~/.config/github-copilot"],
   "lexicons": ["lexicon/lexicon.en.md", "lexicon/lexicon.ja.md"],
   "transcripts": "~/.claude/projects",
   "scan": [
@@ -100,6 +100,34 @@ Note the two scan blocks have **different scopes**. That is deliberate and is th
 tuning knob here: M1 applies to instruction docs, where a misread misroutes work. M5 applies only where
 your own conventions already demand absolute dates. Point M5 at everything and it will fire on prose
 where a relative date is perfectly fine — see *Scope is the tuning knob* below.
+
+### Where your agent's docs live
+
+One config can point at several agent homes at once — `roots` takes a list. **A declared root that
+doesn't exist on your machine is skipped silently**, because nobody has all of these installed at
+once. The alive line reports `roots=<existing>/<declared>` so you can see what was actually scanned:
+
+```
+[misread-lint] alive: rules=6 roots=2/4 targets=13
+```
+
+| Environment | Home | Instruction docs |
+|---|---|---|
+| Claude Code | `~/.claude` | `CLAUDE.md`, `rules/`, `skills/`, `workflows/` |
+| OpenAI Codex | `~/.codex` | `AGENTS.md`, `skills/` |
+| Gemini CLI | `~/.gemini` | `GEMINI.md` |
+| GitHub Copilot | repo | `.github/copilot-instructions.md` |
+| Cursor | repo | `.cursor/rules/**`, `.cursorrules` |
+| Any | repo | `AGENTS.md`, `HANDOFF.md` |
+
+Project-level docs live in whichever repo you're working in, not a home directory — add that path to
+`roots` too, e.g. `"roots": ["~/.claude", "."]`.
+
+**A limitation, stated plainly:** `mine_misreads.py` is verified only against Claude Code's JSONL
+transcript format — records with `type: "user"`/`"assistant"` and Anthropic-shaped `message.content`
+blocks. Other vendors store conversation history differently, and the miner has not been tested against
+any of them. Treat it as Claude-Code-only until someone verifies otherwise; this repo does not claim
+broader support.
 
 ## Use
 

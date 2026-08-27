@@ -1,17 +1,26 @@
 {
-  "root": "~/.claude",
+  "roots": ["~/.claude", "~/.codex", "~/.gemini", "~/.config/github-copilot"],
   "lexicons": ["lexicon/lexicon.en.md", "lexicon/lexicon.ja.md"],
   "transcripts": "~/.claude/projects",
   "scan": [
     {
       "rules": ["M1"],
-      "include": ["rules/**/*.md", "skills/**/*.md", "workflows/**/*.md", "templates/**/*.md"],
-      "exclude": ["ledgers/**"]
+      "include": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        "rules/**/*.md",
+        "skills/**/*.md",
+        "workflows/**/*.md",
+        "templates/**/*.md",
+        "prompts/**/*.md"
+      ],
+      "exclude": ["ledgers/**", "**/node_modules/**", "**/.git/**"]
     },
     {
       "rules": ["M5"],
-      "include": ["**/HANDOFF.md"],
-      "exclude": ["ledgers/**"]
+      "include": ["**/HANDOFF.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"],
+      "exclude": ["ledgers/**", "**/node_modules/**", "**/.git/**"]
     }
   ]
 }

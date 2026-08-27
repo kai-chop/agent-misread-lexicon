@@ -210,18 +210,47 @@ def resolve_globs(root, patterns):
     return result
 
 
-def build_scan_targets(config, root):
-    """Return {abs_path: set(rule_types)} from the config's scan blocks."""
+def resolve_roots(config, root_override=None):
+    """Return (existing_roots, declared_count).
+
+    Accepts `root` (a single path) or `roots` (a list) so one config can cover
+    several agent homes at once -- ~/.claude, ~/.codex, ~/.gemini, a project
+    checkout. Nobody has all of them, so a declared root that does not exist is
+    skipped silently rather than erroring: the normal state is a partial match.
+    `--root` overrides every declared root with exactly one."""
+    if root_override:
+        declared = [root_override]
+    elif "roots" in config:
+        declared = config.get("roots") or []
+        if isinstance(declared, str):
+            declared = [declared]
+    else:
+        declared = [config.get("root", ".")]
+    existing = []
+    for raw in declared:
+        p = Path(os.path.expanduser(str(raw)))
+        if p.is_dir():
+            existing.append(p)
+    return existing, len(declared)
+
+
+def build_scan_targets(config, roots):
+    """Return {abs_path: set(rule_types)} from the config's scan blocks.
+
+    `roots` is a list; every scan block is resolved against each root and the
+    results unioned, so a file matched under two roots keeps both blocks' rules."""
+    if isinstance(roots, (str, Path)):
+        roots = [roots]
     file_rules_map = {}
     for block in config.get("scan", []):
         include = block.get("include", [])
         exclude = block.get("exclude", [])
-        included = resolve_globs(root, include)
-        excluded = resolve_globs(root, exclude)
-        matched = included - excluded
         block_rules = set(block.get("rules", []))
-        for f in matched:
-            file_rules_map.setdefault(f, set()).update(block_rules)
+        for root in roots:
+            included = resolve_globs(root, include)
+            excluded = resolve_globs(root, exclude)
+            for f in included - excluded:
+                file_rules_map.setdefault(f, set()).update(block_rules)
     return file_rules_map
 
 
@@ -251,9 +280,8 @@ def perform_scan(config, config_dir, root_override=None, paths_override=None, ru
         for p in paths_override:
             file_rules_map[Path(p).resolve()] = allowed
     else:
-        root_raw = root_override if root_override else config.get("root", ".")
-        root = Path(os.path.expanduser(root_raw))
-        file_rules_map = build_scan_targets(config, root)
+        roots, _declared = resolve_roots(config, root_override)
+        file_rules_map = build_scan_targets(config, roots)
 
     targets_count = len(file_rules_map)
     findings = []
@@ -348,7 +376,13 @@ def main(argv=None):
         rules_override=args.rules,
     )
 
-    print(f"[misread-lint] alive: rules={len(all_rules)} targets={targets_count}")
+    if args.paths is not None:
+        roots_str = "-/-"
+    else:
+        existing_roots, declared_count = resolve_roots(config, args.root)
+        roots_str = f"{len(existing_roots)}/{declared_count}"
+
+    print(f"[misread-lint] alive: rules={len(all_rules)} roots={roots_str} targets={targets_count}")
     for (path, lineno, rtype, form, clearer) in findings:
         print(f'{path}:{lineno}: [{rtype}] "{form}" -> {clearer}')
     print(f"[misread-lint] summary: {len(findings)} finding(s) across {targets_count} target(s)")
@@ -480,6 +514,93 @@ def run_self_tests():
             return findings == []
 
         safe_check("unknown rule type M9 does not crash and produces no findings", test_unknown_rule_type)
+
+        # 12: a config with a 'roots' list scans every existing root and unions findings.
+        def test_roots_list_scans_every_existing_root():
+            base = tmp_path / "t12"
+            lex_dir = base / "lexicon"
+            lex_dir.mkdir(parents=True)
+            (lex_dir / "lex.md").write_text(
+                "# lex\n"
+                "<!-- misread-lexicon:table -->\n"
+                "| Type | Misread form | Clearer form | Source |\n"
+                "|---|---|---|---|\n"
+                "| M1 | UE | UE (Unreal Engine) | example |\n",
+                encoding="utf-8",
+            )
+            root_a = base / "root_a"
+            root_b = base / "root_b"
+            (root_a / "rules").mkdir(parents=True)
+            (root_b / "rules").mkdir(parents=True)
+            (root_a / "rules" / "a.md").write_text("The UE engine.\n", encoding="utf-8")
+            (root_b / "rules" / "a.md").write_text("The UE engine too.\n", encoding="utf-8")
+            config = {
+                "roots": [str(root_a), str(root_b)],
+                "lexicons": ["lexicon/lex.md"],
+                "scan": [{"rules": ["M1"], "include": ["rules/*.md"], "exclude": []}],
+            }
+            _all_rules, findings, targets_count, _lex = perform_scan(config, base)
+            return targets_count == 2 and len(findings) >= 2
+
+        safe_check(
+            "config: roots list scans every existing root", test_roots_list_scans_every_existing_root
+        )
+
+        # 13: a declared root that does not exist is skipped, not fatal.
+        def test_missing_root_skipped():
+            base = tmp_path / "t13"
+            lex_dir = base / "lexicon"
+            lex_dir.mkdir(parents=True)
+            (lex_dir / "lex.md").write_text(
+                "# lex\n"
+                "<!-- misread-lexicon:table -->\n"
+                "| Type | Misread form | Clearer form | Source |\n"
+                "|---|---|---|---|\n"
+                "| M1 | UE | UE (Unreal Engine) | example |\n",
+                encoding="utf-8",
+            )
+            real_root = base / "root_real"
+            (real_root / "rules").mkdir(parents=True)
+            (real_root / "rules" / "a.md").write_text("The UE engine.\n", encoding="utf-8")
+            missing_root = str(base / "definitely-absent-xyz")
+            config = {
+                "roots": [str(real_root), missing_root],
+                "lexicons": ["lexicon/lex.md"],
+                "scan": [{"rules": ["M1"], "include": ["rules/*.md"], "exclude": []}],
+            }
+            _all_rules, _findings, targets_count, _lex = perform_scan(config, base)
+            existing, declared = resolve_roots(config)
+            return targets_count == 1 and len(existing) == 1 and declared == 2
+
+        safe_check(
+            "config: a declared root that does not exist is skipped, not fatal", test_missing_root_skipped
+        )
+
+        # 14: legacy single 'root' key (no 'roots') still works.
+        def test_legacy_root_key():
+            base = tmp_path / "t14"
+            lex_dir = base / "lexicon"
+            lex_dir.mkdir(parents=True)
+            (lex_dir / "lex.md").write_text(
+                "# lex\n"
+                "<!-- misread-lexicon:table -->\n"
+                "| Type | Misread form | Clearer form | Source |\n"
+                "|---|---|---|---|\n"
+                "| M1 | UE | UE (Unreal Engine) | example |\n",
+                encoding="utf-8",
+            )
+            root_dir = base / "root_legacy"
+            (root_dir / "rules").mkdir(parents=True)
+            (root_dir / "rules" / "a.md").write_text("The UE engine.\n", encoding="utf-8")
+            config = {
+                "root": str(root_dir),
+                "lexicons": ["lexicon/lex.md"],
+                "scan": [{"rules": ["M1"], "include": ["rules/*.md"], "exclude": []}],
+            }
+            _all_rules, findings, targets_count, _lex = perform_scan(config, base)
+            return targets_count == 1 and len(findings) >= 1
+
+        safe_check("config: legacy single 'root' key still works", test_legacy_root_key)
 
     all_passed = all(results)
     return 0 if all_passed else 1
