@@ -1,6 +1,6 @@
-# claude-code-misread-lexicon
+# agent-misread-lexicon
 
-[![test](https://github.com/kai-chop/claude-code-misread-lexicon/actions/workflows/test.yml/badge.svg)](https://github.com/kai-chop/claude-code-misread-lexicon/actions/workflows/test.yml)
+[![test](https://github.com/kai-chop/agent-misread-lexicon/actions/workflows/test.yml/badge.svg)](https://github.com/kai-chop/agent-misread-lexicon/actions/workflows/test.yml)
 
 **エージェントは指示を無視したのではなく、語をひとつ違う意味で読んだ。** 誤読される語の型を登録する台帳と、
 それを書き直させるlinter、そして**過去ログに埋まっている誤読を遡って掘り起こす採掘器**。
@@ -68,8 +68,8 @@
 Python 3.8+。依存なし。
 
 ```bash
-git clone https://github.com/kai-chop/claude-code-misread-lexicon
-cd claude-code-misread-lexicon
+git clone https://github.com/kai-chop/agent-misread-lexicon
+cd agent-misread-lexicon
 cp misread-lexicon.example.json misread-lexicon.json   # 自分の置き場に合わせて編集
 python tools/check_misread_words.py --self-test        # 自機で動くことを確認
 ```

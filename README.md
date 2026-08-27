@@ -1,6 +1,6 @@
-# claude-code-misread-lexicon
+# agent-misread-lexicon
 
-[![test](https://github.com/kai-chop/claude-code-misread-lexicon/actions/workflows/test.yml/badge.svg)](https://github.com/kai-chop/claude-code-misread-lexicon/actions/workflows/test.yml)
+[![test](https://github.com/kai-chop/agent-misread-lexicon/actions/workflows/test.yml/badge.svg)](https://github.com/kai-chop/agent-misread-lexicon/actions/workflows/test.yml)
 
 **Your agent didn't ignore the instruction. It read a word the wrong way.** This is a registry of
 the word-shapes that get misread, plus a linter that stops you from writing them again — and a miner
@@ -76,8 +76,8 @@ The same corpus contained a rule written the second way. It has no misread on re
 Requires Python 3.8+. No dependencies.
 
 ```bash
-git clone https://github.com/kai-chop/claude-code-misread-lexicon
-cd claude-code-misread-lexicon
+git clone https://github.com/kai-chop/agent-misread-lexicon
+cd agent-misread-lexicon
 cp misread-lexicon.example.json misread-lexicon.json   # then edit paths for your setup
 python tools/check_misread_words.py --self-test        # verify it works on your machine
 ```
