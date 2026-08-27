@@ -28,6 +28,8 @@ worth registering — a class you can name is a class you can check for mechanic
 This started as a sweep of one real agent-transcript corpus: **107 transcripts, 1,220 human messages**,
 cross-checked against a hand-kept incident ledger. Every misread found fell into one of six shapes.
 
+![Six shapes a misread takes — two are checked by this linter, two are already owned by other tools, and two deliberately have no detector](assets/six-shapes.svg)
+
 | Type | Mechanism | Detectable? |
 |---|---|---|
 | **M1** Short ambiguous token | A 2–3 character abbreviation collides with a common word, and the reader silently re-reads it as a typo | ✅ this linter |

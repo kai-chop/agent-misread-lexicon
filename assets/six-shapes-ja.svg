@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 596" width="920" height="596" role="img" aria-labelledby="titleja descja">
+  <title id="titleja">誤読がとる6つの型と、それぞれを誰が見張るか</title>
+  <desc id="descja">トランスクリプト107本で実測した誤読の6類型。本linterが検出するのはM1（短い多義トークン）とM5（相対参照）の2つ。M2（符号化の化け）とM4（記号の構文衝突）は既存ガードの所管。M3（語彙乖離・実測最多）とM6（片側列挙・再発最多）は意図的に検出器を持たない。</desc>
+  <style>
+    :root {
+      --bg: #FBFCFD; --edge: #D0D7DE; --ink: #1F2328; --mute: #656D76;
+      --ok: #1A7F37; --okbg: #DAFBE1; --neutral: #6E7781;
+      --neutralbg: #EAEEF2; --warn: #9A6700; --warnbg: #FFF8C5; --rule: #E4E8EC;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0D1117; --edge: #30363D; --ink: #E6EDF3; --mute: #9198A1;
+        --ok: #3FB950; --okbg: #12261C; --neutral: #8B949E;
+        --neutralbg: #161B22; --warn: #D29922; --warnbg: #2A2113; --rule: #21262D;
+      }
+    }
+    .bg { fill: var(--bg); stroke: var(--edge); }
+    .h1 { fill: var(--ink); font: 700 25px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; }
+    .sub { fill: var(--mute); font: 400 13.5px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; }
+    .bandlabel { font: 700 12.5px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; letter-spacing: .04em; }
+    .name { fill: var(--ink); font: 600 15.5px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; }
+    .ex { fill: var(--mute); font: 400 12.5px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; }
+    .why { fill: var(--mute); font: 400 12px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; }
+    .whystrong { fill: var(--ink); font: 600 12px system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; }
+    .tag { fill: var(--ink); font: 700 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .rule { stroke: var(--rule); }
+  </style>
+
+  <rect class="bg" x="0.5" y="0.5" width="919" height="595" rx="14"/>
+
+  <text class="h1" x="34" y="46">誤読がとる6つの型</text>
+  <text class="sub" x="34" y="70">トランスクリプト107本・人間の発話1220件で実測。6つのうち検出器が付くのは2つ——不足ではなく設計。</text>
+
+  <!-- BAND 1 -->
+  <rect x="24" y="94" width="872" height="26" rx="6" fill="var(--okbg)"/>
+  <rect x="24" y="94" width="4" height="26" rx="2" fill="var(--ok)"/>
+  <text class="bandlabel" x="40" y="112" fill="var(--ok)">本linterが検出する</text>
+
+  <g>
+    <text class="tag" x="40" y="150">M1</text>
+    <text class="name" x="82" y="150">短い多義トークン</text>
+    <text class="ex" x="82" y="170">2〜3文字の略語が日常語と衝突し、読み手が黙って「誤字」と読み替える</text>
+    <text class="why" x="640" y="150">登録した語は</text>
+    <text class="whystrong" x="640" y="168">次から機械が捕まえる</text>
+    <line class="rule" x1="34" y1="186" x2="886" y2="186"/>
+  </g>
+  <g>
+    <text class="tag" x="40" y="216">M5</text>
+    <text class="name" x="82" y="216">相対参照</text>
+    <text class="ex" x="82" y="236">会話では成立し、後続セッションや委譲先が読んだ時点で参照先を失う</text>
+    <text class="why" x="640" y="216">スコープを絞ることで</text>
+    <text class="whystrong" x="640" y="234">誤検出をほぼゼロに保つ</text>
+  </g>
+
+  <!-- BAND 2 -->
+  <rect x="24" y="262" width="872" height="26" rx="6" fill="var(--neutralbg)"/>
+  <rect x="24" y="262" width="4" height="26" rx="2" fill="var(--neutral)"/>
+  <text class="bandlabel" x="40" y="280" fill="var(--neutral)">既に所管がある — 2つ目を足すと食い違って両方信用されなくなる</text>
+
+  <g>
+    <text class="tag" x="40" y="318">M2</text>
+    <text class="name" x="82" y="318">符号化の化け</text>
+    <text class="ex" x="82" y="338">語はバイトとしては届くが経路で壊れ、壊れた写しの方を実体として診断してしまう</text>
+    <text class="why" x="640" y="326">→ 符号化ガードの担当</text>
+    <line class="rule" x1="34" y1="354" x2="886" y2="354"/>
+  </g>
+  <g>
+    <text class="tag" x="40" y="384">M4</text>
+    <text class="name" x="82" y="384">記号の構文衝突</text>
+    <text class="ex" x="82" y="404">テキストとしては正しく、描画すると別の意味になる——生パイプが黙って表の列を食う</text>
+    <text class="why" x="640" y="392">→ markdown linterの担当</text>
+  </g>
+
+  <!-- BAND 3 -->
+  <rect x="24" y="430" width="872" height="26" rx="6" fill="var(--warnbg)"/>
+  <rect x="24" y="430" width="4" height="26" rx="2" fill="var(--warn)"/>
+  <text class="bandlabel" x="40" y="448" fill="var(--warn)">意図的に検出器を持たない</text>
+
+  <g>
+    <text class="tag" x="40" y="486">M3</text>
+    <text class="name" x="82" y="486">語彙乖離</text>
+    <text class="ex" x="82" y="506">自分の語彙で検索し、docは書き手の語彙で書かれており、空振りを「不在」と読む</text>
+    <text class="whystrong" x="640" y="480" fill="var(--warn)">実測で最多</text>
+    <text class="why" x="640" y="498">原理的に不能——書かれなかった</text>
+    <text class="why" x="640" y="514">語の「不在」を検出することになる</text>
+    <line class="rule" x1="34" y1="530" x2="886" y2="530"/>
+  </g>
+  <g>
+    <text class="tag" x="40" y="556">M6</text>
+    <text class="name" x="82" y="556">片側列挙の判定語</text>
+    <text class="ex" x="82" y="574">含まれるものだけ列挙して否定側を閉じないため、読み手が「対象外」を発明する</text>
+    <text class="whystrong" x="640" y="550" fill="var(--warn)">再発が最多</text>
+    <text class="why" x="640" y="568">実出現12件——調整コストが</text>
+    <text class="why" x="640" y="584">手監査より高くつく</text>
+  </g>
+</svg>

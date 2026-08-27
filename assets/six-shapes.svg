@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 596" width="920" height="596" role="img" aria-labelledby="title desc">
+  <title id="title">Six shapes a misread takes, and who checks each one</title>
+  <desc id="desc">Six misread types measured across 107 agent transcripts. Two have a detector in this repo: M1 short ambiguous token and M5 relative reference. Two are already owned elsewhere: M2 encoding mangling and M4 markup collision. Two deliberately have no detector: M3 vocabulary gap, which is undecidable and was the most common, and M6 one-sided enumeration, which had the highest recurrence but only about twelve occurrences.</desc>
+  <style>
+    :root {
+      --bg: #FBFCFD; --edge: #D0D7DE; --ink: #1F2328; --mute: #656D76;
+      --band: #EAEEF2; --ok: #1A7F37; --okbg: #DAFBE1; --neutral: #6E7781;
+      --neutralbg: #EAEEF2; --warn: #9A6700; --warnbg: #FFF8C5; --rule: #E4E8EC;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0D1117; --edge: #30363D; --ink: #E6EDF3; --mute: #9198A1;
+        --band: #161B22; --ok: #3FB950; --okbg: #12261C; --neutral: #8B949E;
+        --neutralbg: #161B22; --warn: #D29922; --warnbg: #2A2113; --rule: #21262D;
+      }
+    }
+    .bg { fill: var(--bg); stroke: var(--edge); }
+    .h1 { fill: var(--ink); font: 700 25px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .sub { fill: var(--mute); font: 400 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .bandlabel { font: 700 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: .06em; }
+    .name { fill: var(--ink); font: 600 15.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .ex { fill: var(--mute); font: 400 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .why { fill: var(--mute); font: 400 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .whystrong { fill: var(--ink); font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+    .tag { fill: var(--ink); font: 700 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .rule { stroke: var(--rule); }
+    .foot { fill: var(--ink); font: 600 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .footmute { fill: var(--mute); font: 400 13.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  </style>
+
+  <rect class="bg" x="0.5" y="0.5" width="919" height="595" rx="14"/>
+
+  <text class="h1" x="34" y="46">Six shapes a misread takes</text>
+  <text class="sub" x="34" y="70">Measured across 107 agent transcripts / 1,220 human messages. Two of six ship with a detector — on purpose.</text>
+
+  <!-- BAND 1 : checked here -->
+  <rect x="24" y="94" width="872" height="26" rx="6" fill="var(--okbg)"/>
+  <rect x="24" y="94" width="4" height="26" rx="2" fill="var(--ok)"/>
+  <text class="bandlabel" x="40" y="112" fill="var(--ok)">THIS LINTER CHECKS THESE</text>
+
+  <g>
+    <text class="tag" x="40" y="150">M1</text>
+    <text class="name" x="82" y="150">Short ambiguous token</text>
+    <text class="ex" x="82" y="170">A 2–3 char abbreviation collides with a common word and is read as a typo</text>
+    <text class="why" x="640" y="150">registered word →</text>
+    <text class="whystrong" x="640" y="168">caught next time</text>
+    <line class="rule" x1="34" y1="186" x2="886" y2="186"/>
+  </g>
+  <g>
+    <text class="tag" x="40" y="216">M5</text>
+    <text class="name" x="82" y="216">Relative reference</text>
+    <text class="ex" x="82" y="236">Fine in chat, referent-free once the doc is read by a later session or a delegated agent</text>
+    <text class="why" x="640" y="216">scope-limited →</text>
+    <text class="whystrong" x="640" y="234">near-zero false fire</text>
+  </g>
+
+  <!-- BAND 2 : owned elsewhere -->
+  <rect x="24" y="262" width="872" height="26" rx="6" fill="var(--neutralbg)"/>
+  <rect x="24" y="262" width="4" height="26" rx="2" fill="var(--neutral)"/>
+  <text class="bandlabel" x="40" y="280" fill="var(--neutral)">ALREADY OWNED ELSEWHERE — A SECOND CHECKER WOULD ONLY DISAGREE</text>
+
+  <g>
+    <text class="tag" x="40" y="318">M2</text>
+    <text class="name" x="82" y="318">Encoding mangling</text>
+    <text class="ex" x="82" y="338">Corrupted crossing an encoding boundary — the broken copy gets diagnosed as real</text>
+    <text class="why" x="640" y="326">→ your encoding guard</text>
+    <line class="rule" x1="34" y1="354" x2="886" y2="354"/>
+  </g>
+  <g>
+    <text class="tag" x="40" y="384">M4</text>
+    <text class="name" x="82" y="384">Markup collision</text>
+    <text class="ex" x="82" y="404">Correct as text, different meaning once rendered — a raw pipe quietly eats a table column</text>
+    <text class="why" x="640" y="392">→ a markdown linter</text>
+  </g>
+
+  <!-- BAND 3 : no detector on purpose -->
+  <rect x="24" y="430" width="872" height="26" rx="6" fill="var(--warnbg)"/>
+  <rect x="24" y="430" width="4" height="26" rx="2" fill="var(--warn)"/>
+  <text class="bandlabel" x="40" y="448" fill="var(--warn)">NO DETECTOR, ON PURPOSE</text>
+
+  <g>
+    <text class="tag" x="40" y="486">M3</text>
+    <text class="name" x="82" y="486">Vocabulary gap</text>
+    <text class="ex" x="82" y="506">You search in your words, the doc used the author's, the empty result reads as absence</text>
+    <text class="whystrong" x="640" y="480" fill="var(--warn)">MOST COMMON</text>
+    <text class="why" x="640" y="498">undecidable — you would</text>
+    <text class="why" x="640" y="514">have to detect an absent word</text>
+    <line class="rule" x1="34" y1="530" x2="886" y2="530"/>
+  </g>
+  <g>
+    <text class="tag" x="40" y="556">M6</text>
+    <text class="name" x="82" y="556">One-sided enumeration</text>
+    <text class="ex" x="82" y="574">Lists what counts, never closes the negative — so the reader invents an exclusion</text>
+    <text class="whystrong" x="640" y="550" fill="var(--warn)">MOST REPEATED</text>
+    <text class="why" x="640" y="568">~12 occurrences: tuning costs</text>
+    <text class="why" x="640" y="584">more than hand-auditing</text>
+  </g>
+</svg>
