@@ -234,7 +234,11 @@ def resolve_roots(config, root_override=None):
     for raw in declared:
         p = Path(os.path.expanduser(str(raw)))
         if p.is_dir():
-            existing.append(p)
+            # resolve() so a root compares equal to the resolve()d file paths it
+            # is matched against. Without it, root-anchored scope matching goes
+            # silently empty wherever the OS spells the same directory two ways:
+            # /var vs /private/var on macOS, 8.3 short names vs long on Windows.
+            existing.append(p.resolve())
     return existing, len(declared)
 
 
