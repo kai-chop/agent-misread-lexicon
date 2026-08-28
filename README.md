@@ -179,6 +179,53 @@ rm ~/.claude/templates/probe.md
 If you skip this, you get the failure this repo is about: a mechanism that is installed, green, and
 never delivering.
 
+**3. Optional — catch it at write time, not just at read time.** The session-start sweep flags a file
+the next time somebody opens a session, which means the writer has already moved on. `--hook` lints
+the one file that was just written, right after it lands. In Claude Code:
+
+```json
+{
+  "type": "command",
+  "command": "python /path/to/agent-misread-lexicon/tools/check_misread_words.py --config ~/.claude/misread-lexicon.json --hook --emit claude",
+  "timeout": 10
+}
+```
+
+Register it under `hooks.PostToolUse` with matcher `Edit|Write|MultiEdit`. `--hook` reads the written
+file's path on stdin — a tool event in any of the common JSON shapes, or **a bare path on a line**,
+which is what an editor save-hook or a CI step sends:
+
+```bash
+echo path/to/HANDOFF.md | python tools/check_misread_words.py --config my.json --hook
+```
+
+Behavior, in the order it protects you:
+
+- **Only files your configured scan blocks cover are checked** — everything else passes in silence,
+  so the vast majority of writes cost one interpreter startup (~0.2s measured) and nothing more;
+- **reports; it never blocks.** The write already happened. A post-write gate cannot un-write a
+  file, and a checker that refuses writes is one you eventually satisfy by rewording quotations;
+- **it goes quiet instead of nagging.** A file re-reported with the *same* finding count gets one
+  repeat warning, then silence for the session; any change in the count — up or down — makes it a
+  fresh report. The suppression state lives in a temp file (`--state PATH` to relocate it) and
+  losing it merely means an extra report — the safe direction to fail in;
+- always exits 0, so a finding is never mistaken for a hook failure.
+
+`--emit` names the output contract: the default `text` prints findings to stderr and suits any
+editor or CI host; `claude` prints the `{"decision": "block", "reason": ...}` JSON that Claude
+Code's PostToolUse feeds back to the agent. The value is named for its consumer on purpose — that
+JSON shape is Claude Code's, and defaulting to it would be exactly the kind of quiet vendor
+assumption this repo exists to flag.
+
+Scope is resolved from the same config, with one rule worth knowing: **a pattern starting with `**/`
+is location-independent, every other pattern is root-anchored.** So the documented config gives you
+`**/HANDOFF.md` on a HANDOFF written *anywhere* — including a project checkout that is not a declared
+root and that the sweep therefore never sees — while `rules/**/*.md` still only means the rules
+directory inside a root you declared.
+
+The same scope rule is available to the CLI as `--paths FILE --respect-scope`. Plain `--paths` is
+unchanged: it still applies every rule to every file you name.
+
 ## Use
 
 ```bash
