@@ -337,6 +337,41 @@ dictionary:
 `A−C` is written with U+2212. No search anyone types for `A-C` will ever reach it. Nothing has gone
 wrong yet — which is the entire point of this channel.
 
+### Catching it in the session that is producing it
+
+The audit reads finished transcripts. The same signal is computable while the session is still
+running, which turns a monthly statistic into a line at the end of the turn that produced it.
+Register this under `hooks.Stop`:
+
+```json
+{ "type": "command", "command": "python /path/to/tools/trace_misreads.py --hook", "timeout": 15 }
+```
+
+It reads the hook event on stdin, takes `transcript_path` from it, and reports that one session:
+
+```
+[trace-misreads] hook: session=33c8e498-9d5c-4c searches=2 zero_hit=2 asserted_absence=1
+[trace-misreads] searched 'ledgers/*', found nothing, then concluded: `ledgers/blender-addons.md`
+  ・`ue-plugins.md`・`pending-actions.md` はこのPC（PCB）に一度も存在せず …
+```
+
+Two things differ from the audit, both deliberately:
+
+- **A quiet session is not a failure.** The audit exits 2 when it inspected nothing, because an audit
+  that scanned zero items must never report clean. A session that simply did not search is normal, so
+  the hook always exits 0 and moves the distinction into the alive line — `searches=0` is a quiet
+  session, while a transcript it could not read says so on stderr.
+- **Nothing is labelled caught or uncaught.** That verdict is decided by looking *after* the claim,
+  and mid-session there is no after. The field is `None` rather than `False`: "nobody has objected
+  yet" and "nobody ever objected" are different facts, and only one of them is knowable here.
+
+**Searches run through your shell are not covered — measured before deciding, not assumed.** In the
+reference corpus `Bash` ran 896 search-shaped commands against the search tools' 650, which looks
+like a large blind spot. But 873 of them were compound (`grep … && echo …`, pipelines), and in a
+compound line "no output" cannot be attributed to the search rather than to any other part of it.
+Restricted to bare search commands, where the attribution holds: **23 commands, 0 of them empty.** A
+shell path would have added zero findings, so there is no shell path.
+
 ### One axis survived measurement; three did not
 
 | axis | findings swept across 577 docs | verdict |

@@ -43,10 +43,13 @@ from mine_misreads import (  # noqa: E402
     truncate,
 )
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except AttributeError:
-    pass
+for _stream in (sys.stdout, sys.stderr):
+    # Both: the findings go to stderr, and a console codepage turns a Japanese
+    # claim into mojibake - which is M2, in a tool that exists to report M3.
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
 
 
 SEARCH_TOOLS = ("Grep", "Glob", "Search")
@@ -191,8 +194,14 @@ def find_absence_claim(text):
     return None
 
 
-def assert_on_empty(events):
-    """Zero-hit searches whose next reply concluded the thing does not exist."""
+def assert_on_empty(events, with_pushback=True):
+    """Zero-hit searches whose next reply concluded the thing does not exist.
+
+    with_pushback=False for a session still running: "did a human question it?"
+    is decided by looking *after* the claim, and mid-session there is no after.
+    The field comes back None rather than False, because "nobody objected yet"
+    and "nobody ever objected" are different facts and only one is knowable.
+    """
     hits = []
     pending, armed = {}, None
     for index, (kind, ident, payload) in enumerate(events):
@@ -210,7 +219,7 @@ def assert_on_empty(events):
                     "query": armed,
                     "claim": payload[start:match.end() + 80].replace("\n", " "),
                     "tier": 1 if match.start() < CLAIM_HEAD else 2,
-                    "caught_by_human": _human_pushed_back(events, index),
+                    "caught_by_human": _human_pushed_back(events, index) if with_pushback else None,
                 })
                 armed = None
             elif len(payload.strip()) > 200:
@@ -321,6 +330,61 @@ def vocabulary_gaps(events):
                 })
                 break
     return gaps
+
+
+# ---------------------------------------------------------------------------
+# Hook mode: the same signal, in the session that is producing it
+# ---------------------------------------------------------------------------
+
+def session_path_from_event(raw_text):
+    """The transcript path out of a hook event, or a bare path on a line."""
+    text = (raw_text or "").lstrip("﻿").strip()
+    if not text:
+        return None
+    if text.startswith("{"):
+        try:
+            payload = json.loads(text)
+        except ValueError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        for key in ("transcript_path", "transcriptPath", "transcript"):
+            value = payload.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return None
+    return text if "\n" not in text else None
+
+
+def run_session_hook(session_path):
+    """Report absence-claims in one live session. Always returns 0.
+
+    Two things differ from the audit, and both are deliberate:
+
+    * a session with no searches is a normal session, not a broken instrument,
+      so it does not exit non-zero the way the audit does. What the audit's
+      zero-fail protects against - reporting clean without having looked - is
+      kept by saying which of the two happened in the alive line;
+    * nothing is labelled caught or uncaught, because the human has not had
+      their turn yet.
+    """
+    path = Path(session_path) if session_path else None
+    if path is None or not path.is_file():
+        # Not a clean bill of health: say the instrument could not look.
+        print(f"[trace-misreads] hook: no readable transcript at {session_path!r} - "
+              "nothing was inspected, which is not the same as nothing being wrong.",
+              file=sys.stderr)
+        return [], 0
+
+    events = events_of(path)
+    outcomes = searches_with_outcome(events)
+    claims = assert_on_empty(events, with_pushback=False)
+    print(f"[trace-misreads] hook: session={path.name[:16]} searches={len(outcomes)} "
+          f"zero_hit={sum(1 for _q, empty in outcomes if empty)} asserted_absence={len(claims)}")
+    for claim in claims:
+        print(f'[trace-misreads] searched {claim["query"][:48]!r}, found nothing, '
+              f'then concluded: {truncate(claim["claim"], 200)}', file=sys.stderr)
+    return claims, 0
 
 
 # ---------------------------------------------------------------------------
@@ -602,6 +666,11 @@ def build_arg_parser():
     )
     p.add_argument("--transcripts", default=None, help="Directory of *.jsonl transcripts (default: from config).")
     p.add_argument("--root", default=None, help="Override the config's roots for --sweep.")
+    p.add_argument("--hook", action="store_true",
+                   help="Session mode: read a hook event (or a bare transcript path) on stdin "
+                        "and report absence-claims from that one session. Always exits 0.")
+    p.add_argument("--session", default=None, metavar="PATH",
+                   help="With --hook: read this transcript instead of stdin.")
     p.add_argument("--sweep", action="store_true",
                    help="Also list doc terms exposed on an axis a gap already proved costly.")
     p.add_argument("--emit-probes", default=None, metavar="DIR",
@@ -620,6 +689,16 @@ def main(argv=None):
     args = build_arg_parser().parse_args(argv)
     if args.self_test:
         return run_self_tests()
+
+    if args.hook:
+        session = args.session
+        if session is None:
+            # Same stdin decoding as the linter's hook: cp932 would mangle a
+            # non-ASCII path into one that does not exist - a silent clean pass.
+            from check_misread_words import _read_stdin_text
+            session = session_path_from_event(_read_stdin_text())
+        _claims, code = run_session_hook(session)
+        return code
 
     config, err = load_config(args.config)
     if args.transcripts:
@@ -827,6 +906,62 @@ def run_self_tests():
         summary, code = trace([_reply("hello"), _human("hi")])
         return code == 2 and summary["searches"] == 0
 
+    # --- hook mode: same signal, live session, different contract ---
+    def hook_reports_a_claim_without_labelling_it_caught():
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "s.jsonl"
+            path.write_text(_transcript([
+                _search("a", "read_observer"),
+                _result("a", "No matches found"),
+                _reply("そのフックは存在しません。"),
+            ]), encoding="utf-8")
+            import io
+            import contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                claims, code = run_session_hook(path)
+            return (code == 0 and len(claims) == 1
+                    and claims[0]["caught_by_human"] is None)
+
+    def a_quiet_session_is_not_a_failure():
+        # The audit exits 2 on zero searches; a session that simply did not
+        # search is normal, and a Stop hook that fails on it gets turned off.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "s.jsonl"
+            path.write_text(_transcript([_reply("done"), _human("thanks")]), encoding="utf-8")
+            import io
+            import contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                claims, code = run_session_hook(path)
+            return code == 0 and claims == [] and "searches=0" in buf.getvalue()
+
+    def an_unreadable_transcript_says_so():
+        # The zero-fail idea survives here as a statement, not an exit code:
+        # "inspected nothing" must never print as "nothing wrong".
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            claims, code = run_session_hook("no/such/transcript.jsonl")
+        return code == 0 and claims == [] and "nothing was inspected" in buf.getvalue()
+
+    def event_parsing_finds_the_transcript():
+        as_json = json.dumps({"session_id": "x", "transcript_path": "/tmp/a.jsonl"})
+        return (session_path_from_event(as_json) == "/tmp/a.jsonl"
+                and session_path_from_event("  /tmp/b.jsonl  ") == "/tmp/b.jsonl"
+                and session_path_from_event("{not json") is None)
+
+    def the_audit_still_labels_caught_and_uncaught():
+        # Regression guard: hook mode must not have changed the audit's meaning.
+        summary, _ = trace([
+            _search("a", "PropRide"),
+            _result("a", "No matches found"),
+            _reply("その仕様は存在しません。"),
+            _human("いや、それは誤読"),
+        ])
+        return summary["claims"][0]["caught_by_human"] is True
+
     # --- gaps convert into probes the other tool can actually run ---
     def emitted_probe_loads_in_the_harness():
         from probe_misreads import parse_probe          # local: no import cycle
@@ -922,6 +1057,11 @@ def run_self_tests():
     safe_check("exit 2 on an empty corpus", zero_fail_on_empty_corpus)
     safe_check("exit 2 when no search was inspected", zero_fail_when_no_searches)
     safe_check("sweep reports only a two-spelling collision", sweep_needs_two_spellings)
+    safe_check("hook reports a claim without labelling it caught", hook_reports_a_claim_without_labelling_it_caught)
+    safe_check("a quiet session is not a hook failure", a_quiet_session_is_not_a_failure)
+    safe_check("an unreadable transcript says so", an_unreadable_transcript_says_so)
+    safe_check("the hook event yields the transcript path", event_parsing_finds_the_transcript)
+    safe_check("the audit still labels caught and uncaught", the_audit_still_labels_caught_and_uncaught)
     safe_check("an emitted probe loads in the harness", emitted_probe_loads_in_the_harness)
     safe_check("a gap with no usable term is skipped", a_gap_with_no_usable_term_is_skipped)
     safe_check("emitting twice never overwrites your edits", emitting_twice_never_overwrites)
