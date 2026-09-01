@@ -19,3 +19,7 @@ jobs:
         run: python tools/check_misread_words.py --self-test
       - name: mine_misreads self-test
         run: python tools/mine_misreads.py --self-test
+      - name: trace_misreads self-test
+        run: python tools/trace_misreads.py --self-test
+      - name: probe_misreads self-test
+        run: python tools/probe_misreads.py --self-test

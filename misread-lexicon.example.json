@@ -2,6 +2,8 @@
   "roots": ["~/.claude", "~/.codex", "~/.gemini", "~/.config/github-copilot"],
   "lexicons": ["lexicon/lexicon.en.md", "lexicon/lexicon.ja.md"],
   "transcripts": "~/.claude/projects",
+  "probes": "probes",
+  "runner": "claude -p {prompt}",
   "scan": [
     {
       "rules": ["M1"],

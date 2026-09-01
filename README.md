@@ -232,6 +232,8 @@ unchanged: it still applies every rule to every file you name.
 python tools/check_misread_words.py                    # sweep the configured scope
 python tools/check_misread_words.py --paths FILE ...   # lint specific files
 python tools/mine_misreads.py --out candidates.jsonl   # recover misreads from past transcripts
+python tools/trace_misreads.py --sweep                 # recover the ones nobody reported
+python tools/probe_misreads.py --runner "claude -p {prompt}"   # does rewriting the word help?
 ```
 
 Exit 1 on findings, 0 when clean. **It never rewrites your files** — it prints the location and the
@@ -267,6 +269,210 @@ Expect a low yield and be glad about it. On the reference corpus, 1,220 human me
 hits, and most of those were machine-generated conversation summaries that had to be filtered out. The
 survivors were few — but they were the ones worth registering.
 
+## The misreads nobody reported
+
+Everything above needs somebody to have noticed. `mine_misreads.py` finds the moments a human said
+*"that's not what I meant"*, which makes it blind twice over: the human had to notice, and somebody
+had to say so. Write out what a count like that actually measures:
+
+```
+reported misreads  =  actual misreads  ×  the odds one gets reported
+```
+
+One equation, two unknowns. **A drop in it is not evidence of anything** — fewer misreads and fewer
+admissions look identical from this side. If you install this repo and the number falls, you have
+learned nothing yet. That is the honest status of every self-reported misread count, this one included.
+
+`trace_misreads.py` reads the other side. A misread leaves mechanical traces in a transcript whether
+or not anyone catches it, and those traces come with a denominator.
+
+```bash
+python tools/trace_misreads.py --sweep
+```
+
+### Signal 1 — assert-on-empty
+
+A search comes back empty and the next reply concludes the thing does not exist. The reader's
+vocabulary missed; the claim it produced was about your codebase. That is M3 — the class this README
+calls undetectable, and it is undetectable *in the documents*. In behaviour it is plain:
+
+```
+[trace-misreads] alive: transcripts=107 searches=635 zero_hit=88
+[trace-misreads] assert-on-empty: 8/88 (9.1%) never questioned by a human: 8
+```
+
+Eighty-eight searches found nothing. Eight of them turned straight into "it does not exist" — and
+**not one of those eight was questioned by the human afterwards.** Hand review of the eight: six
+real, two false (an absence claim about a gap rather than a feature — *"there is no window between
+the two steps"* — and a shell transcript quoted inside a table).
+
+Note what cannot be gamed. The finding is produced by the agent *not* flagging its uncertainty, so
+going quieter raises this number rather than lowering it. Silence is the numerator here.
+
+### Signal 2 — vocabulary gaps, and the axis they generalise along
+
+A search comes back empty; a later search for the same concept, spelled differently, succeeds. The
+pair names how the two spellings differed:
+
+```
+[trace-misreads] vocabulary-gap: 25 pair(s) axes={anchor:9, case:1, dash:2, other:13}
+  [case]   looked for 'rtk'                  -> found under 'rtk|RTK'
+  [anchor] looked for 'tests/test_*.py'      -> found under '**/test_*.py'
+  [dash]   looked for '能力差|complementarity' -> found under 'Claude–Codex能力差|Claude-Codex能力差'
+```
+
+This is the forward-looking half, and it is why the tool records an axis rather than a word. A word
+that burned you is one incident. An **axis** that burned you is a prediction: every other term in
+your docs exposed on that same axis is a misread that has not happened yet.
+
+`--sweep` makes the prediction. It sweeps only an axis some gap already proved costly, and reports
+only a collision it can see both halves of in your own corpus — so nothing is guessed from a
+dictionary:
+
+```
+[trace-misreads] sweep: axes=['dash'] docs=577 exposed=2
+  [dash] A-C / A−C  (adversarial_prompts.md, attempt_agent.md)
+```
+
+`A−C` is written with U+2212. No search anyone types for `A-C` will ever reach it. Nothing has gone
+wrong yet — which is the entire point of this channel.
+
+### One axis survived measurement; three did not
+
+| axis | findings swept across 577 docs | verdict |
+|---|---|---|
+| `dash` — a dash you cannot type | 2 | shipped |
+| `case` | 52 | cut: nearly all heading title-case (`Multi-Agent` / `Multi-agent`) |
+| hyphen vs `_` | 58 | cut: mostly a CLI flag beside a variable of the same name |
+| `anchor`, `space` | — | reported as gaps; no doc-side form that isn't a guess |
+
+An axis can stay in the gap report — it is evidence, it cost a real search — without being
+sweepable, because a prediction has to be worth reading. The cuts are pinned by self-tests, so
+turning one back on has to be a deliberate edit rather than a drift.
+
+### What it still cannot see
+
+A misread that never ran a search leaves no trace here. If the reader resolved your word to the
+wrong thing and went straight to work, this tool is as blind as the other one. The claim is narrow
+on purpose: **it measures the misreads that passed through a search, with a denominator, and without
+anyone having to admit anything.** It is not a misread rate for your session.
+
+It exits 0 normally and **2 when it inspected nothing** — a checker that scanned zero items and
+reports "no findings" is the exact failure this repo exists to argue against.
+
+## Does rewriting the word actually help?
+
+The two channels above count misreads. Neither answers the question a registry exists to answer:
+**when you rewrite a row into its clearer form, does anything change?**
+
+`probe_misreads.py` runs that as an experiment. A probe is one task with one word in it, written
+twice — `raw:` is the spelling that gets misread, `hardened:` is your lexicon's third column. Both
+arms get the identical fixture, the identical task, the identical everything else, so the model's
+mood and the day it is land on both arms and cancel:
+
+```
+misread rate (raw arm) − misread rate (hardened arm) = what that row bought you
+```
+
+Nothing in that number is self-reported. Grading reads the artifact — which file the agent named,
+which id it answered — so an agent that stops admitting mistakes does not move it. Disclosure is
+measured too, but as a **separate** number, conditioned on the trials the artifact already proved
+wrong. Two numbers, and now the failure modes come apart:
+
+| | disclosure steady | disclosure falls |
+|---|---|---|
+| **misread rate falls** | it genuinely reads better | it reads better *and* says less |
+| **misread rate flat** | nothing changed | **it just went quiet** |
+
+Bring your own agent; the harness does not ship one:
+
+```bash
+python tools/probe_misreads.py --list                          # what would run
+python tools/probe_misreads.py --runner "claude -p {prompt}"   # run it
+```
+
+`{prompt}` is the task and `{dir}` the scratch directory. The command is run without a shell, so a
+quoted Windows path with spaces survives intact.
+
+### A probe is one markdown file
+
+```markdown
+---
+id: example-m3-vocabulary-gap
+type: M3
+raw: perimeter throttle
+hardened: perimeter throttle (rate limit)
+runs: 2
+---
+## task
+Read gateway.md. Does this service limit how many requests one client can send?
+Answer with `yes: <feature name>` or with `no`.
+
+## fixture: gateway.md
+The {{term}} rejects a client that goes over its budget for the window.
+
+## correct
+perimeter throttle
+
+## misread
+/^\s*no\b/
+```
+
+One `{{term}}` placeholder, two spellings, and the two arms differ by nothing else. `## correct` is
+mandatory: a probe that cannot tell a right answer from a crash is refused at load, not scored.
+Patterns are substrings, or `/regex/` per line.
+
+Note what this probe measures — **M3, the vocabulary gap**, the class this README calls undetectable.
+A linter cannot find the absence of a word nobody wrote. A probe can: ask in the reader's words about
+a feature the document names in the author's, and watch which way the answer goes.
+
+### Probes you get without writing any
+
+A registry that ships nearly empty would give you a harness with nothing to run, so probes are also
+derived straight from lexicon rows — columns two and three already *are* the two arms:
+
+```
+[probe-misreads] alive: probes=4 arms=2 trials=8 failed=0
+  example-m3-vocabulary-gap  M3  raw='perimeter throttle'  hardened='perimeter throttle (rate limit)'
+  auto-m1-UE                 M1  raw='UE'                  hardened='UE (Unreal Engine)'
+  auto-m5-yesterday          M5  raw='yesterday'           hardened='2026-08-02'
+```
+
+A hand-written probe with the same id always wins — it came from an incident, the derived one is a
+template. Rows that cannot produce a fair question are skipped and counted (`lexicon rows with no
+auto probe: 9`) rather than silently dropped.
+
+### The first real run found no effect, and says so
+
+Eight trials against a live agent:
+
+```
+[probe-misreads]      raw arm: misread 0/4 (0%, 95% CI 0-49%) ambiguous=0
+[probe-misreads] hardened arm: misread 0/4 (0%, 95% CI 0-49%) ambiguous=0
+[probe-misreads] the row bought you: +0 points of misread rate
+```
+
+Read that interval before reading the zero. **At four trials an arm, this cannot tell a 40-point
+improvement from nothing.** The honest summary is not "the lexicon does not work" — it is "this
+experiment had no power", and the fix is more runs and probes built from misreads that actually
+happened to you, not a bigger claim.
+
+Two things only a real run could have found, both now fixed or documented:
+
+- **Grading the reasoning instead of the answer.** An agent answered `D-A` correctly and then
+  explained *"reading it against today would wrongly give D-B"* — and the misread pattern matched
+  that sentence. Grading now reads the answer line first and falls back to the whole artifact only
+  when the answer line decides nothing.
+- **The agent under test reads your instruction files.** One trial resolved a bare token and said
+  where from: the tester's own registry, loaded from their home directory. The raw arm was being
+  handed the answer. `--isolate-home` points the agent's home at the scratch directory — but verify
+  your agent still authenticates that way first: Claude Code keeps credentials in the home it is
+  being denied, and answers `Not logged in`. It works for a runner that authenticates from an
+  environment variable.
+
+It exits 0 normally and **2 when it graded nothing** — no probes, or a runner that never produced
+output. A rate over zero trials is not a result.
+
 ## Scope is the tuning knob
 
 The first real sweep of this tool produced three findings and **one false positive**, and the false
@@ -290,9 +496,12 @@ docs flags them — a document *about* relative references necessarily contains 
 and `tomorrow`.
 
 Most of those are **mentions, not uses**, and they are marked as code spans, which the linter exempts.
-That takes this repo's docs from 9 flags to 2 — and the 2 that remain are the quotation in the section
-above, one in each README. They stay flagged and they stay unedited, because the alternative is a tool
-rewriting someone's words to satisfy itself.
+That leaves 4 across the two READMEs, and **every one of them is a quotation**: the passage in the
+section above, one in each file, plus an agent's own explanation quoted in the probe section
+(`reading it against today would wrongly give D-B`, one in each file). They stay flagged and they
+stay unedited, because the alternative is a tool rewriting someone's words to satisfy itself — and
+the second pair arrived by exactly the route this section warns about: writing about the tool
+produced new prose the tool then flagged.
 
 Neither of these files is in the default scan scope, so a normal sweep never sees them. That is the
 whole lesson repeated in miniature: **the rule was never the problem; the scope was.**
