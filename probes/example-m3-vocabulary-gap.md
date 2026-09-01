@@ -4,14 +4,15 @@ type: M3
 raw: perimeter throttle
 hardened: perimeter throttle (rate limit)
 runs: 2
+filler: 40
 ---
 
 ## task
 
-Read gateway.md. Does this service limit how many requests one client can send?
-Answer with `yes: <feature name>` or with `no`.
+Search the notes/ directory. Does this service limit how many requests one client
+can send? Answer with `yes: <feature name>` or with `no`.
 
-## fixture: gateway.md
+## fixture: notes/gateway.md
 
 # Gateway
 
