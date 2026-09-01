@@ -51,6 +51,7 @@ DEFAULT_TIMEOUT = 180
 _FRONT_MATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.S)
 _SECTION_RE = re.compile(r"^##[ \t]+(.+?)[ \t]*$", re.M)
 _REGEX_LINE_RE = re.compile(r"\A/(.*)/\Z")
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 # Said out loud by the agent on a trial the artifact already shows is wrong.
 _DISCLOSURE_RE = re.compile(
     r"not (?:certain|sure)|unsure|i (?:may|might) (?:have )?(?:be wrong|misread)|"
@@ -94,6 +95,7 @@ def parse_probe(text, name="<probe>"):
         "raw": meta.get("raw", ""),
         "hardened": meta.get("hardened", ""),
         "runs": int(meta.get("runs", DEFAULT_RUNS)),
+        "filler": int(meta.get("filler", 0)),
         "source": name,
         "task": (sections.get("task") or "").strip(),
         "fixtures": {t.split(":", 1)[1].strip(): b for t, b in sections.items()
@@ -113,6 +115,9 @@ def parse_probe(text, name="<probe>"):
 
 
 def _patterns(block):
+    # A trailing <!-- note --> belongs to the reader, not to the grader. Without
+    # this every line of the comment loads as a match pattern.
+    block = _HTML_COMMENT_RE.sub("", block)
     return [line.strip() for line in block.splitlines() if line.strip()]
 
 
@@ -224,11 +229,43 @@ def split_runner(template):
     return out
 
 
+_FILLER_TOPICS = ("cache warmup", "log rotation", "deploy window", "retry budget",
+                  "schema drift", "index rebuild", "token refresh", "queue drain",
+                  "shard rebalance", "cert renewal", "backfill job", "alert routing")
+_FILLER_BODIES = ("Owned by the platform team. Reviewed each quarter.",
+                  "Runbook sits next to the service. No open questions.",
+                  "Superseded by the entry above; kept for the history.",
+                  "Draft - the numbers are placeholders until the next review.")
+
+
+def filler_files(count, avoid):
+    """Plausible notes that surround the real one.
+
+    A misread happens because searching is cheaper than reading everything. A
+    fixture of one small file removes that pressure - the agent just reads it
+    all and the mechanism never fires. Filler restores the pressure, so the
+    probe tests what the real session tested. Nothing in it contains either
+    spelling, or the probe would answer itself.
+    """
+    out, index, ceiling = {}, 0, count * 4 + 100
+    while len(out) < count and index < ceiling:
+        topic = _FILLER_TOPICS[index % len(_FILLER_TOPICS)]
+        body = _FILLER_BODIES[(index // len(_FILLER_TOPICS)) % len(_FILLER_BODIES)]
+        text = f"# {topic} {index:02d}\n\n{body}\n"
+        index += 1
+        if any(term and term.lower() in text.lower() for term in avoid):
+            continue
+        out[f"notes/note-{len(out):02d}.md"] = text
+    return out
+
+
 def materialise(probe, arm, target_dir):
     """Write the probe's fixture for one arm. Returns the task prompt."""
     spelling = probe[arm]
     target_dir = Path(target_dir)
-    for rel, body in probe["fixtures"].items():
+    files = dict(filler_files(probe.get("filler", 0), (probe["raw"], probe["hardened"])))
+    files.update(probe["fixtures"])
+    for rel, body in files.items():
         path = target_dir / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body.replace(TERM_PLACEHOLDER, spelling) + "\n", encoding="utf-8")
@@ -662,6 +699,31 @@ def run_self_tests():
                     == hard_prompt.replace("UE (Unreal Engine)", "UE")
                     and (raw_dir / "answer.txt").read_text(encoding="utf-8").strip() == "UE")
 
+    # --- filler restores the pressure that makes a misread happen ---
+    def filler_surrounds_the_real_note():
+        body = probe_text("x").replace("runs: 1", "runs: 1\nfiller: 12")
+        probe = parse_probe(body)
+        with tempfile.TemporaryDirectory() as tmp:
+            materialise(probe, "raw", tmp)
+            notes = list((Path(tmp) / "notes").glob("*.md"))
+            return len(notes) == 12
+
+    def filler_never_contains_either_spelling():
+        files = filler_files(30, ("cache warmup", "log rotation"))
+        joined = "\n".join(files.values()).lower()
+        return (len(files) == 30 and "cache warmup" not in joined
+                and "log rotation" not in joined)
+
+    def a_trailing_note_is_not_a_pattern():
+        body = probe_text("x") + "\n<!--\nexplaining above-notes for the reader\n-->\n"
+        probe = parse_probe(body)
+        return probe["misread"] == ["above-notes"]
+
+    def no_filler_by_default():
+        with tempfile.TemporaryDirectory() as tmp:
+            materialise(parse_probe(probe_text("x")), "raw", tmp)
+            return not (Path(tmp) / "notes").exists()
+
     # --- runner templates survive a Windows path with spaces ---
     def runner_splitting_keeps_windows_paths():
         argv = split_runner(r'"C:\Program Files\x\claude.exe" -p {prompt}')
@@ -724,6 +786,10 @@ def run_self_tests():
     safe_check("zero probes is not a clean bill of health", zero_probes_is_not_a_clean_bill)
     safe_check("a runner that produces nothing is not a result", runner_that_never_runs_is_not_a_result)
     safe_check("the arms differ by exactly one word", arms_differ_only_in_the_term)
+    safe_check("filler surrounds the real note", filler_surrounds_the_real_note)
+    safe_check("filler never contains either spelling", filler_never_contains_either_spelling)
+    safe_check("a trailing note is not a match pattern", a_trailing_note_is_not_a_pattern)
+    safe_check("no filler unless the probe asks", no_filler_by_default)
     safe_check("runner template keeps a quoted Windows path", runner_splitting_keeps_windows_paths)
     safe_check("auto M5 probe discriminates both ways", auto_m5_has_two_sided_discrimination)
     safe_check("auto M1 probe needs an expansion to check", auto_m1_needs_an_expansion)

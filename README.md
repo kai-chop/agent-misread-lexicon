@@ -465,10 +465,62 @@ Two things only a real run could have found, both now fixed or documented:
   when the answer line decides nothing.
 - **The agent under test reads your instruction files.** One trial resolved a bare token and said
   where from: the tester's own registry, loaded from their home directory. The raw arm was being
-  handed the answer. `--isolate-home` points the agent's home at the scratch directory — but verify
-  your agent still authenticates that way first: Claude Code keeps credentials in the home it is
-  being denied, and answers `Not logged in`. It works for a runner that authenticates from an
-  environment variable.
+  handed the answer.
+
+  Claude Code ships the right switch for this — `--bare` skips CLAUDE.md auto-discovery along with
+  hooks and auto-memory — but it carries a condition worth measuring before trusting it:
+
+  | route | suppresses CLAUDE.md? | still authenticated? |
+  |---|---|---|
+  | `--bare`, or `CLAUDE_CODE_SIMPLE=1` alone | yes | **only with `ANTHROPIC_API_KEY`** — measured `Not logged in` under OAuth |
+  | `--setting-sources project` | **no** — measured, the user file still loads | yes |
+  | `--isolate-home` (this harness) | yes | same API-key condition |
+
+  So run the probes through an API-key runner and the contamination is gone. Run them as a
+  browser-logged-in user and it is not: the raw arm keeps being handed the answer. That is a fact
+  about the agent rather than about this harness, and it belongs in how you read the numbers.
+
+### Three attempts to make a probe bite, and what they measured
+
+A probe is only an instrument if it can catch the thing at least once. Three designs, 22 live trials,
+and the raw arm never failed:
+
+| design | what the agent actually did | raw arm |
+|---|---|---|
+| one small fixture | read all of it | 0/5 |
+| `filler: 300` — a corpus too big to read | grepped a synonym set, then re-scanned broadly | 0/3 |
+| the question buried as item 3 of a 4-item checklist | same | 0/3 |
+
+Its own evidence line on the second attempt: `Grep -i "throttle|rate limit|429|quota|token bucket|…"
+→ 1 hit`, then `limit|cap|budget|API key|…` → 27 hits. **A reader that enumerates synonyms before it
+starts cannot be caught by a vocabulary gap.** (`filler: N` surrounds the real note with N plausible
+ones; the knob is real and it is what the second row measures. It was not enough.)
+
+The reason looks structural rather than fixable. Every incident in the mined transcripts happened
+deep inside a long session, where the search was one step of fifty under some other goal. A probe is
+a short fresh session whose entire purpose is that one question — and a reader with all of its
+attention on one question is careful.
+
+So the scope, stated rather than left as a to-do: **`probe_misreads.py` measures whether a rewrite
+changes behaviour in a short, fresh session. The misreads this repo is about happen in long, loaded
+ones.** That is a boundary of the method. The channel that watches the real thing is
+`trace_misreads.py`, which reads the sessions where it actually occurs.
+
+### Turning a measured gap into a probe
+
+`trace_misreads.py --emit-probes DIR` builds a probe from a gap the miner already found — the pair is
+measured, so the two arms are real spellings rather than invented ones. It lists candidates and
+writes nothing until you name one with `--gap ID`:
+
+```
+[trace-misreads] convertible gaps: 12 of 25. Pick the pair that is two names for one thing.
+  gap-codex-claude-complementa   doc says 'codex_claude_complementarity' / reader looked for '能力差'
+  gap-character-generator        doc says 'character-generator' / reader looked for 'character generator'
+```
+
+Emitting all of them was tried and measured: **12 files, of which 1 was a real pair of names for one
+thing.** The pairing can see that two searches ran near each other; whether two words mean the same
+thing is not a question string comparison can answer, so it is left to you.
 
 It exits 0 normally and **2 when it graded nothing** — no probes, or a runner that never produced
 output. A rate over zero trials is not a result.
