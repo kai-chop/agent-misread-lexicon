@@ -474,7 +474,9 @@ def _resolve_config(explicit):
         path = cwd if cwd.exists() else (repo if repo.exists() else None)
     if path is None or not path.exists():
         return {}, Path.cwd()
-    return json.loads(path.read_text(encoding="utf-8")), path.resolve().parent
+    # utf-8-sig: decodes a BOM-less file identically, and strips the BOM VS Code and
+    # PowerShell's Out-File prepend -- which otherwise raises before the run starts.
+    return json.loads(path.read_text(encoding="utf-8-sig")), path.resolve().parent
 
 
 def main(argv=None):
@@ -772,6 +774,14 @@ def run_self_tests():
         kept = [p for p in derived if p["id"] not in have]
         return kept == []
 
+    def bom_config_is_not_a_parse_error():
+        # A BOM in front of the config JSON used to raise before a single probe had run.
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "misread-lexicon.json"
+            cfg.write_text(json.dumps({"lexicons": [], "scan": []}), encoding="utf-8-sig")
+            config, parent = _resolve_config(str(cfg))
+            return config == {"lexicons": [], "scan": []} and parent == Path(tmp).resolve()
+
     safe_check("the two arms are scored apart", arms_are_scored_apart)
     safe_check("delta reports the effect of the row", delta_is_the_effect)
     safe_check("no effect reads as zero, not as a win", no_effect_reads_as_zero)
@@ -795,6 +805,7 @@ def run_self_tests():
     safe_check("auto M1 probe needs an expansion to check", auto_m1_needs_an_expansion)
     safe_check("an auto probe is graded end to end", auto_probe_is_graded_end_to_end)
     safe_check("a hand-written probe overrides the derived one", hand_written_probe_beats_the_derived_one)
+    safe_check("a BOM in front of the config JSON is not a parse error", bom_config_is_not_a_parse_error)
 
     print(f"[probe-misreads] self-test: {sum(results)}/{len(results)} passed")
     return 0 if all(results) else 1

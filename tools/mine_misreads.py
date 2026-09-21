@@ -232,7 +232,9 @@ def load_config(explicit_path):
                 "edit it, or pass --config PATH."
             )
     try:
-        config = json.loads(p.read_text(encoding="utf-8"))
+        # utf-8-sig: decodes a BOM-less file identically, and strips the BOM VS Code and
+        # PowerShell's Out-File prepend -- which otherwise reads as invalid JSON.
+        config = json.loads(p.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         return None, f"invalid JSON in config {p}: {exc}"
     return config, None
@@ -423,6 +425,15 @@ def run_self_tests():
             )
 
         safe_check("a record with isMeta: true is skipped", test_is_meta_skipped)
+
+        # A BOM in front of the config JSON used to read as invalid JSON and exit 2.
+        def test_bom_config_loads():
+            cfg = tmp_path / "bom-config.json"
+            cfg.write_text(json.dumps({"roots": ["."], "lexicons": [], "scan": []}), encoding="utf-8-sig")
+            config, err = load_config(str(cfg))
+            return err is None and config == {"roots": ["."], "lexicons": [], "scan": []}
+
+        safe_check("a BOM in front of the config JSON is not a parse error", test_bom_config_loads)
 
     all_passed = all(results)
     return 0 if all_passed else 1

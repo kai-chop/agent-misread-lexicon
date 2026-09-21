@@ -325,12 +325,25 @@ def rules_for_path(config, abs_path, roots):
 
 
 def load_all_rules(config_dir, lexicon_rel_paths):
+    """Rules from every configured lexicon, deduped on (type, form).
+
+    The example config loads an English and a Japanese lexicon, and a term that needs the same
+    guard in both languages (UE) is listed in both. Without this, one occurrence in one file is
+    reported once per lexicon, so the finding count counts lexicons, not problems. The first
+    lexicon listed wins the form, and a rule left with no forms of its own is dropped.
+    """
     all_rules = []
     lexicon_abs_paths = set()
+    seen = set()
     for rel in lexicon_rel_paths:
         abs_path = (config_dir / rel).resolve()
         lexicon_abs_paths.add(abs_path)
-        all_rules.extend(parse_lexicon_table(abs_path))
+        for rule in parse_lexicon_table(abs_path):
+            forms = [f for f in rule["forms"] if (rule["type"], f) not in seen]
+            if not forms:
+                continue
+            seen.update((rule["type"], f) for f in forms)
+            all_rules.append(dict(rule, forms=forms))
     return all_rules, lexicon_abs_paths
 
 
@@ -641,7 +654,9 @@ def main(argv=None):
             return 2
 
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
+        # utf-8-sig: decodes a BOM-less file identically, and strips the BOM VS Code and
+        # PowerShell's Out-File prepend -- which otherwise reads as invalid JSON.
+        config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         print(f"[misread-lint] invalid JSON in config {config_path}: {exc}", file=sys.stderr)
         return 2
@@ -672,6 +687,12 @@ def main(argv=None):
         print(f'{path}:{lineno}: [{rtype}] "{form}" -> {clearer}')
     print(f"[misread-lint] summary: {len(findings)} finding(s) across {targets_count} target(s)")
 
+    if targets_count == 0:
+        # zero-fail: a config whose globs matched nothing inspected nothing, and "0 findings"
+        # then means "broken", not "clean". The two print the same green otherwise.
+        print("[misread-lint] no scan targets matched: check the config's roots and include globs",
+              file=sys.stderr)
+        return 2
     return 1 if findings else 0
 
 
@@ -1087,6 +1108,100 @@ def run_self_tests():
             return len(rules) == 1 and len(findings) == 1
 
         safe_check("BOM: neither the lexicon nor a scanned file goes silent", test_bom_does_not_silence)
+
+        # 25: the same term in two lexicons is one rule, so one occurrence is one finding.
+        def test_same_form_in_two_lexicons_is_one_finding():
+            base = tmp_path / "t25"
+            lex_dir = base / "lexicon"
+            lex_dir.mkdir(parents=True)
+            for name, clearer, extra in (("lex.en.md", "UE (Unreal Engine)", "| M1 | FPW | FPW (Fire Pro Wrestling) | example |\n"),
+                                         ("lex.ja.md", "UE(Unreal Engine)", "")):
+                (lex_dir / name).write_text(
+                    "# lex\n"
+                    "<!-- misread-lexicon:table -->\n"
+                    "| Type | Misread form | Clearer form | Source |\n"
+                    "|---|---|---|---|\n"
+                    "| M1 | UE | " + clearer + " | example |\n" + extra,
+                    encoding="utf-8",
+                )
+            root = base / "root"
+            (root / "rules").mkdir(parents=True)
+            (root / "rules" / "a.md").write_text("The UE engine, and FPW too.\n", encoding="utf-8")
+            config = {
+                "roots": [str(root)],
+                "lexicons": ["lexicon/lex.en.md", "lexicon/lex.ja.md"],
+                "scan": [{"rules": ["M1"], "include": ["rules/*.md"], "exclude": []}],
+            }
+            all_rules, findings, _targets, _lex = perform_scan(config, base)
+            ue = [f for f in findings if f[3] == "UE"]
+            fpw = [f for f in findings if f[3] == "FPW"]
+            # one UE finding, the first lexicon's wording, and the form only that lexicon has survives
+            return (len(ue) == 1 and ue[0][4] == "UE (Unreal Engine)" and len(fpw) == 1
+                    and sorted(f for r in all_rules for f in r["forms"]) == ["FPW", "UE"])
+
+        safe_check("a form listed in two lexicons is reported once", test_same_form_in_two_lexicons_is_one_finding)
+
+        # 26: a BOM in front of the config JSON is not a parse error.
+        def test_bom_config_loads():
+            import contextlib
+            import io as _io
+            base = tmp_path / "t26"
+            lex_dir = base / "lexicon"
+            lex_dir.mkdir(parents=True)
+            (lex_dir / "lex.md").write_text(
+                "# lex\n"
+                "<!-- misread-lexicon:table -->\n"
+                "| Type | Misread form | Clearer form | Source |\n"
+                "|---|---|---|---|\n"
+                "| M1 | UE | UE (Unreal Engine) | example |\n",
+                encoding="utf-8",
+            )
+            root = base / "root"
+            (root / "rules").mkdir(parents=True)
+            (root / "rules" / "a.md").write_text("The UE engine.\n", encoding="utf-8")
+            cfg = base / "misread-lexicon.json"
+            cfg.write_text(json.dumps({
+                "roots": [str(root)],
+                "lexicons": ["lexicon/lex.md"],
+                "scan": [{"rules": ["M1"], "include": ["rules/*.md"], "exclude": []}],
+            }), encoding="utf-8-sig")
+            out_buf, err_buf = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+                rc = main(["--config", str(cfg)])
+            # 1 = the UE finding, i.e. the config parsed and the scan ran; 2 would be the BOM
+            return rc == 1 and "invalid JSON" not in err_buf.getvalue() and "[M1]" in out_buf.getvalue()
+
+        safe_check("a BOM in front of the config JSON is not a parse error", test_bom_config_loads)
+
+        # 27: zero-fail -- a config whose globs match nothing inspected nothing, so it is not a pass.
+        def test_zero_targets_fails():
+            import contextlib
+            import io as _io
+            base = tmp_path / "t27"
+            lex_dir = base / "lexicon"
+            lex_dir.mkdir(parents=True)
+            (lex_dir / "lex.md").write_text(
+                "# lex\n"
+                "<!-- misread-lexicon:table -->\n"
+                "| Type | Misread form | Clearer form | Source |\n"
+                "|---|---|---|---|\n"
+                "| M1 | UE | UE (Unreal Engine) | example |\n",
+                encoding="utf-8",
+            )
+            empty_root = base / "root"
+            empty_root.mkdir(parents=True)
+            cfg = base / "misread-lexicon.json"
+            cfg.write_text(json.dumps({
+                "roots": [str(empty_root)],
+                "lexicons": ["lexicon/lex.md"],
+                "scan": [{"rules": ["M1"], "include": ["rules/*.md"], "exclude": []}],
+            }), encoding="utf-8")
+            out_buf, err_buf = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+                rc = main(["--config", str(cfg)])
+            return rc == 2 and "targets=0" in out_buf.getvalue()
+
+        safe_check("zero-fail: a config that matched no file exits 2, not 0", test_zero_targets_fails)
 
     all_passed = all(results)
     return 0 if all_passed else 1
